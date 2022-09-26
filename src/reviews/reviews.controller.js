@@ -1,6 +1,7 @@
-const reviewsService = require("./reviews.service")
+const service = require("./reviews.service")
 const asyncErrorBoundary = require("../errors/asyncErrorBoundary");
 const mapProperties = require("../utils/map-properties");
+
 
 async function reviewExists(req, res, next) {
     const { reviewId } = req.params;
@@ -18,19 +19,20 @@ const addCategory = mapProperties({
     organization_name: "critic.organization",
 })
 
-async function destroy(req, res) {
-    const { review } = req.locals;
-    await reviewsService.delete(review.review_id);
+async function destroy(req, res, next) {
+    const reviewId = req.params.reviewId;
+    await service.delete(reviewId);
     res.sendStatus(204);
 }
 
 async function update(req, res) {
+    const review = res.locals.review;
     const updatedReview = {
         ...req.body.data,
         review_id: review.review_id,
     }
     await service.update(updatedReview);
-    const reviewWithCritic = await service.reviewAndCritic(review.review_id);
+    const reviewWithCritic = await service.reviewWithCritic(review.review_id);
     const newReview = addCategory(reviewWithCritic);
     res.json({ data: newReview})
 }

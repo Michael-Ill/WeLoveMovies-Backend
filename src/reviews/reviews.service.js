@@ -16,14 +16,14 @@ function destroy(reviewId){
 function update(updatedReview){
     return knex("reviews")
         .select("*")
-        .where({ review_id: updatedReview.reviewId })
+        .where({ review_id: updatedReview.review_id })
         .update(updatedReview, "*")
 }
 
 function reviewWithCritic (reviewId){
     return knex("reviews as r")    
         .select("r.*", "c.*")
-        .join("critics as c", "c.critic_id", "r.critic_id")
+        .join("critics as c", "r.critic_id", "c.critic_id")
         .where({ "r.review_id": reviewId })
         .first();
 }
@@ -34,3 +34,4 @@ module.exports = {
     update,
     reviewWithCritic,
 }
+
