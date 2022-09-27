@@ -1,49 +1,82 @@
-const service = require("./reviews.service")
 const asyncErrorBoundary = require("../errors/asyncErrorBoundary");
-const mapProperties = require("../utils/map-properties");
+const service = require("./reviews.service");
 
+// validate review id
+async function validateReviewId(req, res, next) {
 
-async function reviewExists(req, res, next) {
-    const { reviewId } = req.params;
-    const reviewFound = await service.read(reviewId);
-    if (reviewFound) {
-        res.locals.review = reviewFound;
+    res.locals.reviewId = Number(req.params.reviewId);
+
+    if (res.locals.reviewId) {
+        res.locals.databaseRes = await service.read(res.locals.reviewId);
+    };
+
+    if (res.locals.databaseRes) {
+        res.locals.databaseRes = {}; // clear the databaseRes var for reassignment. 
+        return next();
+    };
+
+    next({ status: 404, message: 'Review cannot be found.' });
+};
+
+// validate update object
+function validateUpdateObject(req, res, next) {
+
+    res.locals.updateObj = {};
+    res.locals.updateObj.review_id = res.locals.reviewId;
+
+    if (req.body.data.score && req.body.data.content) {
+        res.locals.updateObj = {
+            "score": req.body.data.score,
+            "content": req.body.data.content
+        };
+        return next();
+    };
+
+    if (req.body.data.score) {
+        res.locals.updateObj.score = req.body.data.score;
+        return next();
+    };
+
+    if (req.body.data.content) {
+        res.locals.updateObj.content = req.body.data.content;
         return next();
     }
-   next({ status: 404, message: `Review cannot be found.` });
-}
 
-const addCategory = mapProperties({
-    preferred_name: "critic.preferred_name",
-    surname: "critic.surname",
-    organization_name: "critic.organization",
-})
+    next({ status: 400, message: "Must provide something to update.." });
+};
 
-async function destroy(req, res, next) {
-    const reviewId = req.params.reviewId;
-    await service.delete(reviewId);
+// call the db; update, and return a reformatted res
+async function update(_req, res, _next) {
+
+    await service.update(res.locals.updateObj);
+    const intialDbRes = await service.read(res.locals.updateObj.review_id, "put");
+
+    res.locals.databaseRes = {
+        content: intialDbRes[0].content,
+        created_at: intialDbRes[0].created_at,
+        critic: {
+            organization_name: intialDbRes[0].organization_name,
+            preferred_name: intialDbRes[0].preferred_name,
+            surname: intialDbRes[0].surname,
+        },
+        critic_id: intialDbRes[0].critic_id,
+        movie_id: intialDbRes[0].movie_id,
+        review_id: intialDbRes[0].review_id,
+        score: intialDbRes[0].score,
+        updated_at: intialDbRes[0].updated_at
+    };
+    res.json({ data: res.locals.databaseRes });
+};
+
+// call db and delete the req review
+async function destory(_req, res, _next) {
+
+    await service.delete(res.locals.reviewId);
     res.sendStatus(204);
-}
 
-async function update(req, res) {
-    const review = res.locals.review;
-    const updatedReview = {
-        ...req.body.data,
-        review_id: review.review_id,
-    }
-    await service.update(updatedReview);
-    const reviewWithCritic = await service.reviewWithCritic(review.review_id);
-    const newReview = addCategory(reviewWithCritic);
-    res.json({ data: newReview})
-}
+};
 
 module.exports = {
-update: [
-    asyncErrorBoundary(reviewExists),
-    asyncErrorBoundary(update)
-],
-delete: [
-    asyncErrorBoundary(reviewExists),
-    asyncErrorBoundary(destroy),
-]
+    update: [asyncErrorBoundary(validateReviewId), validateUpdateObject, asyncErrorBoundary(update)],
+    delete: [asyncErrorBoundary(validateReviewId), asyncErrorBoundary(destory)]
 };
