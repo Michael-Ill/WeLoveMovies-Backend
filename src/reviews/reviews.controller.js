@@ -1,82 +1,63 @@
+const reviewsService = require("./reviews.service");
 const asyncErrorBoundary = require("../errors/asyncErrorBoundary");
-const service = require("./reviews.service");
+const mapProperties = require("../utils/map-properties");
 
-// validate review id
-async function validateReviewId(req, res, next) {
+const addCritic = mapProperties({
+    preferred_name: "critic.preferred_name",
+    surname: "critic.surname",
+    organization_name: "critic.organization_name",
+});
 
-    res.locals.reviewId = Number(req.params.reviewId);
+function appendCritic(critics) {
+    const result = critics.map((critic) => addCritic(critic));
+    return result;
+}
 
-    if (res.locals.reviewId) {
-        res.locals.databaseRes = await service.read(res.locals.reviewId);
-    };
+async function reviewExists (req, res, next) {
+    const review = await reviewsService.read(req.params.reviewId);
 
-    if (res.locals.databaseRes) {
-        res.locals.databaseRes = {}; // clear the databaseRes var for reassignment. 
-        return next();
-    };
-
-    next({ status: 404, message: 'Review cannot be found.' });
-};
-
-// validate update object
-function validateUpdateObject(req, res, next) {
-
-    res.locals.updateObj = {};
-    res.locals.updateObj.review_id = res.locals.reviewId;
-
-    if (req.body.data.score && req.body.data.content) {
-        res.locals.updateObj = {
-            "score": req.body.data.score,
-            "content": req.body.data.content
-        };
-        return next();
-    };
-
-    if (req.body.data.score) {
-        res.locals.updateObj.score = req.body.data.score;
-        return next();
-    };
-
-    if (req.body.data.content) {
-        res.locals.updateObj.content = req.body.data.content;
+    if (review) {
+        res.locals.review = review;
         return next();
     }
-
-    next({ status: 400, message: "Must provide something to update.." });
+    //next({status: 404, message: "Review cannot be found."});
+    res.status(404).send({ error: "Review cannot be found." });    
 };
 
-// call the db; update, and return a reformatted res
-async function update(_req, res, _next) {
 
-    await service.update(res.locals.updateObj);
-    const intialDbRes = await service.read(res.locals.updateObj.review_id, "put");
+async function list(req, res, next) {
+    const {movieId} = req.params;
+    let listReviews;
 
-    res.locals.databaseRes = {
-        content: intialDbRes[0].content,
-        created_at: intialDbRes[0].created_at,
-        critic: {
-            organization_name: intialDbRes[0].organization_name,
-            preferred_name: intialDbRes[0].preferred_name,
-            surname: intialDbRes[0].surname,
-        },
-        critic_id: intialDbRes[0].critic_id,
-        movie_id: intialDbRes[0].movie_id,
-        review_id: intialDbRes[0].review_id,
-        score: intialDbRes[0].score,
-        updated_at: intialDbRes[0].updated_at
-    };
-    res.json({ data: res.locals.databaseRes });
-};
+    if (movieId) {
+        listReviews = await reviewsService.listMovieId(movieId)
+    } else {
+        listReviews = await reviewsService.list()
+    }
+    listReviews = appendCritic(listReviews);
+    res.json({data: listReviews });
+}
 
-// call db and delete the req review
-async function destory(_req, res, _next) {
+async function update(req, res) {
+    const updatedReview = { ...res.locals.review, ...req.body.data };
+    await reviewsService.update(updatedReview);
+    const reviewToReturn = await reviewsService.getReviewWithCritic(
+      res.locals.review.review_id
+    );
+    console.log(reviewToReturn);
+    res.json({ data: reviewToReturn });
+  }
 
-    await service.delete(res.locals.reviewId);
+async function destroy(req, res, next) {
+    const { reviewId } = req.params;
+    await reviewsService.delete(reviewId);
     res.sendStatus(204);
-
 };
+
+
 
 module.exports = {
-    update: [asyncErrorBoundary(validateReviewId), validateUpdateObject, asyncErrorBoundary(update)],
-    delete: [asyncErrorBoundary(validateReviewId), asyncErrorBoundary(destory)]
-};
+    list: asyncErrorBoundary(list),
+    update: [asyncErrorBoundary(reviewExists), asyncErrorBoundary(update)],
+    delete: [asyncErrorBoundary(reviewExists), asyncErrorBoundary(destroy)],
+}

@@ -1,55 +1,66 @@
 const knex = require("../db/connection");
+const mapProperties = require("../utils/map-properties");
 
-// update the db at the provided review id
-function update(updateObj) {
+const addCriticDetails = mapProperties({
+  preferred_name: "critic.preferred_name",
+  surname: "critic.surname",
+  organization_name: "critic.organization_name",
+});
 
-  return knex("reviews")
-    .update({ ...updateObj })
-    .where({ review_id: updateObj.review_id });
-
-};
-
-// check the db for the provided review id or get reviews with critics.
-function read(reviewId, meth = "get") {
-
-  if (meth === "get") {
-    return knex("reviews")
-        .select("*")
-        .where({ review_id: reviewId })
-        .first();
-  };
-
-  if (meth === "put") {
+function list() {
     return knex("reviews as r")
-      .join("critics as c", "r.critic_id", "c.critic_id")
-      .select(
-        "r.review_id",
-        "r.content",
-        "r.score",
-        "r.critic_id",
-        "r.movie_id",
-        // "r.created_at",
-        // "r.updated_at",
-        "c.preferred_name",
-        "c.surname",
-        "c.organization_name"
-      )
-      .where({ "r.review_id": reviewId });
-  };
+    .join("movies as m", "r.movie_id", "m.movie_id")
+    .join("critics as c",  "c.critic_id", "r.critic_id")
+    .select("r.*", "c.*");
+}
 
-};
+function listMovieId(movieId) {
+    return knex("reviews as r")
+    .join("movies as m", "r.movie_id", "m.movie_id")
+    .join("critics as c", "r.critic_id", "c.critic_id")
+    .select("r.*", "c.*")
+    .where({ "m.movie_id": movieId });
+}
 
-// delete the review based on review id from the db
-function destroy(reviewId) {
-
+function update(updatedReview) {
   return knex("reviews")
-    .where({ review_id: reviewId })
-    .del();
+    .select("*")
+    .where({ review_id: updatedReview.review_id })
+    .update(updatedReview);
+}
 
+function getReviewWithCritic(reviewId) {
+  return knex("reviews as r")
+    .join("critics as c", "r.critic_id", "c.critic_id")
+    .select("*")
+    .where({ review_id: reviewId })
+    .first()
+    .then((result) => {
+      const updatedReview = addCriticDetails(result);
+      return updatedReview;
+    });
+}
+
+
+function destroy(reviewId) {
+    return knex("reviews")
+    .where({"review_id": reviewId})
+    .del();
 };
+
+
+function read(reviewId) {
+    return knex("reviews")
+    .select("*")
+    .where({"review_id": reviewId})
+    .first();
+}
 
 module.exports = {
-  read,
-  update,
-  delete: destroy,
-};
+    list,
+    listMovieId,
+    update,
+    getReviewWithCritic,
+    read,
+    delete: destroy,
+}
